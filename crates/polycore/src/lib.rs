@@ -23,6 +23,7 @@ mod fp;
 pub mod interp;
 pub mod lehmer;
 pub mod modp;
+pub mod modp_echelon;
 mod monomial;
 mod parse;
 mod poly;

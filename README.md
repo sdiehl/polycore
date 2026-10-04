@@ -11,6 +11,7 @@ A shared polynomial trait foundation for fields, word-sized prime fields, Chines
 - [`PrimeField`](crates/polycore/src/fast.rs): NTT multiplication, Newton division and half-GCD
 - [`RatFunc<F>`](crates/polycore/src/ratfunc.rs): univariate rational functions
 - [`Echelon<F>`](crates/polycore/src/echelon.rs), [`dense`](crates/polycore/src/dense.rs): sparse and dense linear algebra
+- [`modp_echelon`](crates/polycore/src/modp_echelon.rs): sparse elimination/null spaces on bare `u64` residues, one modulus per matrix
 - [`crt`](crates/polycore/src/crt.rs): Chinese remaindering and rational reconstruction
 - [`lehmer`](crates/polycore/src/lehmer.rs): Lehmer gcd for big integers
 - [`Newton<F>`](crates/polycore/src/interp.rs), [`Thiele<F>`](crates/polycore/src/interp.rs): polynomial and rational interpolation
@@ -28,10 +29,12 @@ A shared polynomial trait foundation for fields, word-sized prime fields, Chines
 
 Factoring in one variable, on top of polycore.
 
-- [`factor_mod`](crates/polyfactor/src/zp.rs): Berlekamp over $\mathrm{GF}(p)$
+- [`factor_mod`](crates/polyfactor/src/zp.rs): Berlekamp over $\mathrm{GF}(p)$ with seeded random fixed-space splitting for odd primes and deterministic splitting in characteristic two
 - [`factor`](crates/polyfactor/src/rational.rs): Hensel lifting and Zassenhaus over $\mathbb{Q}$
 - [`Alg`, `NumberField`](crates/polyfactor/src/field.rs): number field arithmetic
 - [`factor_over`](crates/polyfactor/src/trager.rs): Trager over number fields
+
+The finite-field splitter uses modular exponentiation to separate random fixed-space values by quadratic character, avoiding enumeration of `0..p`. Tests cover mixed factor degrees, multiplicities, inseparable inputs, and primes through 64 bits. Factor order is deterministic (degree, then ascending coefficient residues within each squarefree part).
 
 ## License
 

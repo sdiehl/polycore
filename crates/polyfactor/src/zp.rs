@@ -4,6 +4,7 @@
 
 use num_traits::{One, Zero};
 use polycore::dense::nullspace;
+use polycore::sample::Rng;
 use polycore::{Fp, Uni};
 
 /// The monic irreducible factors of a squarefree monic `f` over `GF(p)`.
@@ -24,25 +25,41 @@ pub(crate) fn berlekamp(f: &Uni<Fp>, p: u64) -> Vec<Uni<Fp>> {
     }
     let basis = nullspace(&m);
     let mut factors = vec![f.clone()];
-    for v in basis.iter().map(|v| Uni::new(v.clone())) {
-        for s in 0..p {
-            if factors.len() == basis.len() {
-                return factors;
+    let split = |factors: Vec<Uni<Fp>>, v: &Uni<Fp>| {
+        factors
+            .into_iter()
+            .flat_map(|g| {
+                let h = g.gcd(v);
+                if h.deg() > 0 && h.deg() < g.deg() {
+                    vec![&g / &h, h]
+                } else {
+                    vec![g]
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    if p == 2 {
+        // Fixed points take values 0 or 1 on each irreducible component.
+        for v in basis.iter().map(|v| Uni::new(v.clone())) {
+            factors = split(factors, &v);
+        }
+    } else {
+        // A random fixed point is an independent F_p constant on every component,
+        // even when their degrees differ. Its quadratic character partitions them.
+        // Each trial needs O(log p) modular polynomial multiplications; there is
+        // no enumeration of the field. The seeded Las Vegas loop is reproducible.
+        let mut rng = Rng::new(0x6265_726c_656b_616d);
+        while factors.len() < basis.len() {
+            let mut v = Uni::zero();
+            for b in &basis {
+                v = &v + &Uni::new(b.clone()).scale(&Fp::new(rng.next_u64() % p, p));
             }
-            let shift = &v - &Uni::constant(Fp::new(s, p));
-            factors = factors
-                .into_iter()
-                .flat_map(|g| {
-                    let h = g.gcd(&shift);
-                    if h.deg() > 0 && h.deg() < g.deg() {
-                        vec![&g / &h, h]
-                    } else {
-                        vec![g]
-                    }
-                })
-                .collect();
+            factors = split(factors, &v);
+            let character = &v.powmod((p - 1) / 2, f) - &Uni::constant(Fp::one());
+            factors = split(factors, &character);
         }
     }
+    factors.sort_by_key(|g| (g.deg(), g.0.iter().map(|c| c.value()).collect::<Vec<_>>()));
     factors
 }
 
