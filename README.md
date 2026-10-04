@@ -29,12 +29,10 @@ A shared polynomial trait foundation for fields, word-sized prime fields, Chines
 
 Factoring in one variable, on top of polycore.
 
-- [`factor_mod`](crates/polyfactor/src/zp.rs): Berlekamp over $\mathrm{GF}(p)$ with seeded random fixed-space splitting for odd primes and deterministic splitting in characteristic two
+- [`factor_mod`](crates/polyfactor/src/zp.rs): Berlekamp over $\mathrm{GF}(p)$
 - [`factor`](crates/polyfactor/src/rational.rs): Hensel lifting and Zassenhaus over $\mathbb{Q}$
 - [`Alg`, `NumberField`](crates/polyfactor/src/field.rs): number field arithmetic
 - [`factor_over`](crates/polyfactor/src/trager.rs): Trager over number fields
-
-The finite-field splitter uses modular exponentiation to separate random fixed-space values by quadratic character, avoiding enumeration of `0..p`. Tests cover mixed factor degrees, multiplicities, inseparable inputs, and primes through 64 bits. Factor order is deterministic (degree, then ascending coefficient residues within each squarefree part).
 
 ## License
 

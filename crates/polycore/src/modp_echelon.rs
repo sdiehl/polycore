@@ -202,3 +202,33 @@ pub fn solve(a: &[Vec<u64>], b: &[u64], p: u64) -> Result<Vec<u64>, crate::dense
         })
         .collect())
 }
+
+/// Invert a square residue matrix, returning `None` if it is singular or ragged.
+pub fn invert(a: &[Vec<u64>], p: u64) -> Option<Vec<Vec<u64>>> {
+    let n = a.len();
+    if a.iter().any(|r| r.len() != n) {
+        return None;
+    }
+    let mut e = Echelon::new(Lead::Low, p);
+    for (i, row) in a.iter().enumerate() {
+        let r: Row = row
+            .iter()
+            .copied()
+            .chain((0..n).map(|j| u64::from(i == j)))
+            .enumerate()
+            .collect();
+        if e.insert(&r)? >= n {
+            return None;
+        }
+    }
+    let mut out = vec![vec![0; n]; n];
+    for row in e.rref() {
+        let i = row[0].0;
+        for &(j, c) in &row[1..] {
+            if j >= n {
+                out[i][j - n] = c;
+            }
+        }
+    }
+    Some(out)
+}

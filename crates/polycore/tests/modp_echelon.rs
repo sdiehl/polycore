@@ -61,3 +61,40 @@ fn rectangular_solve() {
         Err(SolveError::Deficient)
     );
 }
+
+#[test]
+fn inversion_rejects_singular_and_multiplies_to_identity() {
+    use polycore::modp::{add, mul};
+    for p in [
+        2,
+        101,
+        4_611_686_018_427_387_847,
+        18_446_744_073_709_551_557,
+    ] {
+        assert!(modp_echelon::invert(&[vec![1, 1], vec![1, 1]], p).is_none());
+        assert!(modp_echelon::invert(&[vec![1, 0], vec![1]], p).is_none());
+        let mut rng = Rng::new(13);
+        for n in 1..8 {
+            let a: Vec<Vec<_>> = (0..n)
+                .map(|i| {
+                    (0..n)
+                        .map(|j| match i.cmp(&j) {
+                            std::cmp::Ordering::Equal => 1,
+                            std::cmp::Ordering::Less => rng.next_u64() % p,
+                            std::cmp::Ordering::Greater => 0,
+                        })
+                        .collect()
+                })
+                .collect();
+            let b = modp_echelon::invert(&a, p).unwrap();
+            for (i, row) in a.iter().enumerate() {
+                for (j, _) in b.iter().enumerate() {
+                    assert_eq!(
+                        (0..n).fold(0, |s, k| add(s, mul(row[k], b[k][j], p), p)),
+                        u64::from(i == j)
+                    );
+                }
+            }
+        }
+    }
+}
