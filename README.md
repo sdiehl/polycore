@@ -35,4 +35,4 @@ Factoring in one variable, on top of polycore.
 
 ## License
 
-Released under the MIT License. See [LICENSE](LICENSE) for details.
+MIT Licensed. Copyright 2024-2026 Stephen Diehl. See [LICENSE](LICENSE) for details.

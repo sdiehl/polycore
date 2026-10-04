@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add `Monomial::mask`, a cheap necessary condition for divisibility.
+
 ## 0.1.5 (2026-10-01)
 
 - Add fast prime-field polynomial arithmetic and `Uni` adapters.

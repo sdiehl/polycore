@@ -77,6 +77,18 @@ impl Monomial {
             .all(|(a, b)| *a == 0 || *b == 0)
     }
 
+    /// A necessary condition for divisibility: `a.divides(b)` implies `a.mask() & !b.mask() == 0`.
+    ///
+    /// Each variable gets four cumulative degree buckets. Variables beyond sixteen share
+    /// buckets, which weakens the filter but never rejects a divisor.
+    #[inline]
+    pub fn mask(&self) -> u64 {
+        self.exps.iter().enumerate().fold(0, |mask, (i, &e)| {
+            let bits = (1u64 << e.min(4)) - 1;
+            mask | (bits << ((i % 16) * 4))
+        })
+    }
+
     /// The value at `x`.
     pub fn eval<F: Field>(&self, x: &[F]) -> F {
         self.exps
