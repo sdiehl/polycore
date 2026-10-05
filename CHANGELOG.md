@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.6 (2026-10-05)
 
+- Replace residue scans with random fixed-space factor splitting.
+- Support finite-field factorization at 63- and 64-bit primes.
+- Add sparse elimination on bare residues in `modp_echelon`.
+- Add residue matrix solving and inversion.
 - Add `Monomial::mask`, a cheap necessary condition for divisibility.
 
 ## 0.1.5 (2026-10-01)
