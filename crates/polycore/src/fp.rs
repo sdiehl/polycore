@@ -32,6 +32,20 @@ pub trait Modular: Field + Copy {
 ///
 /// `Fp::zero()` and `Fp::one()` carry no modulus (`p = 0`) and adopt the modulus of whatever they
 /// meet, so generic code that starts from `F::zero()` or `F::one()` works unchanged.
+///
+/// ```
+/// use num_traits::One;
+/// use polycore::Fp;
+/// let p = 13;
+/// let a = Fp::new(5, p);
+/// assert_eq!(a * a.try_inverse().unwrap(), Fp::new(1, p));
+/// assert_eq!(Fp::from_i64(-1, p).value(), 12);
+///
+/// let one = Fp::one();
+/// assert_eq!(one.modulus(), 0);
+/// assert_eq!((a + one).modulus(), 13);
+/// assert_eq!(a + one, Fp::new(6, p));
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct Fp {
     v: u64,

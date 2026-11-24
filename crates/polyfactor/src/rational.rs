@@ -154,7 +154,19 @@ fn irreducible(f: &Uni<Q>) -> Vec<Uni<Q>> {
         .collect()
 }
 
-/// The monic irreducible factors over Q with multiplicities.
+/// The monic irreducible factors over Q with multiplicities, ascending by multiplicity. The
+/// leading coefficient is dropped: `f = lc(f) * prod g^e`.
+///
+/// ```
+/// use num_rational::BigRational as Q;
+/// use polycore::Uni;
+/// use polyfactor::factor;
+/// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+/// // 3 (x - 1)^2 (x + 1) = 3x^3 - 3x^2 - 3x + 3
+/// let parts = factor(&u(&[3, -3, -3, 3]));
+/// assert_eq!(parts, vec![(u(&[1, 1]), 1), (u(&[-1, 1]), 2)]);
+/// assert!(factor(&u(&[5])).is_empty());
+/// ```
 pub fn factor(f: &Uni<Q>) -> Vec<(Uni<Q>, u32)> {
     f.squarefree()
         .into_iter()
@@ -163,6 +175,17 @@ pub fn factor(f: &Uni<Q>) -> Vec<(Uni<Q>, u32)> {
 }
 
 /// Whether `f` is irreducible over Q, of positive degree.
+///
+/// ```
+/// use num_rational::BigRational as Q;
+/// use polycore::Uni;
+/// use polyfactor::is_irreducible;
+/// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+/// // x^4 + 1 is irreducible over Q though it factors modulo every prime
+/// assert!(is_irreducible(&u(&[1, 0, 0, 0, 1])));
+/// assert!(!is_irreducible(&u(&[-1, 0, 0, 0, 1])));
+/// assert!(!is_irreducible(&u(&[7])));
+/// ```
 pub fn is_irreducible(f: &Uni<Q>) -> bool {
     matches!(factor(f).as_slice(), [(_, 1)])
 }

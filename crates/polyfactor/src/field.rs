@@ -12,7 +12,22 @@ use polycore::{Field, Uni};
 type Q = BigRational;
 
 /// The field of a root of the monic irreducible `m` over `F`, with an interval `(lo, hi]`
-/// isolating it when it is real over Q.
+/// isolating it when it is real over Q. Elements are [`Alg`], shared through an `Rc`.
+///
+/// ```
+/// use std::rc::Rc;
+/// use num_rational::BigRational as Q;
+/// use polycore::Uni;
+/// use polyfactor::{Alg, NumberField};
+/// let q = |n: i64| Q::from_integer(n.into());
+/// let k = Rc::new(NumberField::new(&Uni::new(vec![q(-2), q(0), q(1)]))); // Q(sqrt 2)
+/// let a = Alg::generator(&k);
+/// assert_eq!(a.clone() * a.clone(), Alg::from(q(2)));
+///
+/// let b = Alg::from(q(1)) + a.clone(); // 1 + sqrt 2
+/// assert_eq!(Alg::from(q(1)) / b.clone(), a - Alg::from(q(1)));
+/// assert_eq!((b.norm(&k), b.trace(&k)), (q(-1), q(2)));
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NumberField<F = Q> {
     pub m: Uni<F>,
@@ -20,7 +35,9 @@ pub struct NumberField<F = Q> {
 }
 
 impl<F: Field> NumberField<F> {
-    /// The field of a root of an irreducible `m`, with no real approximation.
+    /// The field of a root of an irreducible `m`, made monic, with no real approximation.
+    /// Irreducibility is not checked; check it with [`crate::is_irreducible`] when unsure,
+    /// since otherwise the quotient ring has zero divisors and division is meaningless.
     pub fn new(m: &Uni<F>) -> Self {
         Self {
             m: m.monic(),
@@ -55,6 +72,20 @@ impl<K, F: Clone> Clone for Alg<K, F> {
 }
 
 impl<F: Field, K: AsRef<NumberField<F>>> Alg<K, F> {
+    /// The element `c(a)` for the generator `a`, reduced modulo the minimal polynomial.
+    ///
+    /// ```
+    /// use std::rc::Rc;
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// use polyfactor::{Alg, NumberField};
+    /// let q = |n: i64| Q::from_integer(n.into());
+    /// let k = Rc::new(NumberField::new(&Uni::new(vec![q(1), q(0), q(1)]))); // Q(i)
+    /// // 3 + 2i + i^2 = 2 + 2i
+    /// let z = Alg::new(Uni::new(vec![q(3), q(2), q(1)]), &k);
+    /// assert_eq!((z.coordinate(0), z.coordinate(1)), (q(2), q(2)));
+    /// assert_eq!(z.rational(), None);
+    /// ```
     pub fn new(c: Uni<F>, k: &Rc<K>) -> Self {
         let m = &(**k).as_ref().m;
         let c = if c.deg() >= m.deg() { &c % m } else { c };
@@ -64,6 +95,7 @@ impl<F: Field, K: AsRef<NumberField<F>>> Alg<K, F> {
         }
     }
 
+    /// The generator `a`, a root of the minimal polynomial.
     pub fn generator(k: &Rc<K>) -> Self {
         Self::new(Uni::x(), k)
     }
@@ -126,7 +158,21 @@ impl<F: Field, K: AsRef<NumberField<F>>> Alg<K, F> {
 impl<K: AsRef<NumberField>> Alg<K> {
     /// Whether the element is positive in a real field: the interval is halved until the
     /// polynomial has no root in it, and the sign at the end is the sign at the generator.
-    /// Nothing is positive in a complex field.
+    /// Nothing is positive in a complex field, nor in one without an isolating interval.
+    ///
+    /// ```
+    /// use std::rc::Rc;
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// use polyfactor::{Alg, NumberField};
+    /// let q = |n: i64| Q::from_integer(n.into());
+    /// let mut k = NumberField::new(&Uni::new(vec![q(-2), q(0), q(1)]));
+    /// k.interval = Some((q(1), q(2))); // the positive root, sqrt 2
+    /// let k = Rc::new(k);
+    /// let a = Alg::generator(&k);
+    /// assert!((a.clone() - Alg::from(q(1))).positive());
+    /// assert!(!(Alg::from(q(1)) - a).positive());
+    /// ```
     pub fn positive(&self) -> bool {
         if self.c.is_zero() {
             return false;

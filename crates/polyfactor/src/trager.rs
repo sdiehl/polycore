@@ -57,7 +57,27 @@ fn trager<K: AsRef<NumberField> + Debug>(g: &Uni<Alg<K>>, k: &Rc<K>) -> Vec<Uni<
     unreachable!("some shift makes the norm squarefree")
 }
 
-/// The monic irreducible factors over the field `k` with multiplicities.
+/// The monic irreducible factors over the field `k` with multiplicities, the leading
+/// coefficient dropped. Coefficients may be elements of Q lifted with `Alg::from`, which take
+/// the field from `k`.
+///
+/// ```
+/// use std::rc::Rc;
+/// use num_rational::BigRational as Q;
+/// use num_traits::One;
+/// use polycore::Uni;
+/// use polyfactor::{Alg, NumberField, factor_over};
+/// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+/// let k = Rc::new(NumberField::new(&u(&[1, 0, 1]))); // Q(i)
+///
+/// // x^4 - 1 = (x - 1)(x + 1)(x - i)(x + i)
+/// let f: Uni<Alg> = u(&[-1, 0, 0, 0, 1]).map(|c| Alg::from(c.clone()));
+/// let parts = factor_over(&f, &k);
+/// assert_eq!(parts.len(), 4);
+/// assert!(parts.iter().all(|(g, e)| g.deg() == 1 && *e == 1));
+/// let product = parts.iter().fold(Uni::constant(Alg::one()), |acc, (g, _)| &acc * g);
+/// assert_eq!(product, f);
+/// ```
 pub fn factor_over<K: AsRef<NumberField> + Debug>(
     f: &Uni<Alg<K>>,
     k: &Rc<K>,

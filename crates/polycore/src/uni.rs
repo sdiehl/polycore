@@ -7,10 +7,34 @@ use crate::poly::Poly;
 use crate::sample::Rng;
 
 /// A dense univariate polynomial by ascending power, without trailing zeros.
+///
+/// `Uni(vec![c0, c1, c2])` is `c0 + c1 x + c2 x^2`; the zero polynomial is `Uni(vec![])`.
+/// Build through [`Uni::new`], which trims, rather than the field. Arithmetic is on
+/// references: `&f * &g`, `&f / &g`, `&f % &g`.
+///
+/// ```
+/// use num_rational::BigRational as Q;
+/// use polycore::Uni;
+/// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+/// let f = u(&[1, 2, 3]); // 1 + 2x + 3x^2
+/// assert_eq!(f.deg(), 2);
+/// assert_eq!(f.eval(&Q::from_integer(2.into())), Q::from_integer(17.into()));
+/// assert_eq!(&f * &u(&[0, 1]), u(&[0, 1, 2, 3]));
+/// assert_eq!(&u(&[-1, 0, 1]) / &u(&[1, 1]), u(&[-1, 1]));
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Uni<F>(pub Vec<F>);
 
 impl<F: Field> Uni<F> {
+    /// Coefficients by ascending power, trailing zeros dropped.
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// assert_eq!(u(&[5, 0, 0]), u(&[5]));
+    /// assert!(u(&[0, 0]).is_zero());
+    /// ```
     pub fn new(mut v: Vec<F>) -> Self {
         while v.last().is_some_and(F::is_zero) {
             v.pop();
@@ -18,10 +42,12 @@ impl<F: Field> Uni<F> {
         Self(v)
     }
 
+    /// The zero polynomial, `Uni(vec![])`.
     pub const fn zero() -> Self {
         Self(Vec::new())
     }
 
+    /// The constant `c`, zero when `c` is.
     pub fn constant(c: F) -> Self {
         Self::new(vec![c])
     }
@@ -35,11 +61,13 @@ impl<F: Field> Uni<F> {
         self.0.is_empty()
     }
 
-    /// The degree, 0 for the zero polynomial.
+    /// The degree, 0 for the zero polynomial: test [`Uni::is_zero`] to tell it from a
+    /// constant.
     pub const fn deg(&self) -> usize {
         self.0.len().saturating_sub(1)
     }
 
+    /// The leading coefficient, zero for the zero polynomial.
     pub fn lc(&self) -> F {
         self.0.last().cloned().unwrap_or_else(F::zero)
     }
@@ -69,6 +97,14 @@ impl<F: Field> Uni<F> {
     }
 
     /// Synthetic division by `x - a`: the quotient and the remainder `self(a)`.
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// let (q, r) = u(&[-1, 0, 1]).deflate(&Q::from_integer(3.into()));
+    /// assert_eq!((q, r), (u(&[3, 1]), Q::from_integer(8.into())));
+    /// ```
     pub fn deflate(&self, a: &F) -> (Self, F) {
         let Some((lead, rest)) = self.0.split_last() else {
             return (Self::zero(), F::zero());
@@ -82,6 +118,16 @@ impl<F: Field> Uni<F> {
         (Self(q), r)
     }
 
+    /// Quotient and remainder, `deg r < deg d`. Panics when `d` is zero. Over a prime field
+    /// [`Uni::divrem_fast`] is faster on large inputs.
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// let (q, r) = u(&[1, 0, 0, 1]).divrem(&u(&[-1, 1]));
+    /// assert_eq!((q, r), (u(&[1, 1, 1]), u(&[2])));
+    /// ```
     pub fn divrem(&self, d: &Self) -> (Self, Self) {
         let l = d.lc().inverse().expect("division by the zero polynomial");
         let mut r = self.0.clone();
@@ -99,7 +145,15 @@ impl<F: Field> Uni<F> {
         (Self::new(q), Self::new(r))
     }
 
-    /// The quotient when `d` divides `self`.
+    /// The quotient when `d` divides `self`, otherwise `None`.
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// assert_eq!(u(&[-1, 0, 1]).exact(&u(&[1, 1])), Some(u(&[-1, 1])));
+    /// assert_eq!(u(&[1, 0, 1]).exact(&u(&[1, 1])), None);
+    /// ```
     pub fn exact(&self, d: &Self) -> Option<Self> {
         let (q, r) = self.divrem(d);
         r.is_zero().then_some(q)
@@ -115,7 +169,15 @@ impl<F: Field> Uni<F> {
             })
     }
 
-    /// `self^e mod f`.
+    /// `self^e mod f` by repeated squaring, for exponents far too large to expand, such as the
+    /// Frobenius `x^p` in root finding and factoring.
+    ///
+    /// ```
+    /// use polycore::{Gf, Uni};
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Gf::<101>::from_i64(c)).collect());
+    /// // 101 = 1 mod 4, so x^2 + 1 splits over GF(101) and x^101 = x modulo it
+    /// assert_eq!(u(&[0, 1]).powmod(101, &u(&[1, 0, 1])), u(&[0, 1]));
+    /// ```
     #[must_use]
     pub fn powmod(&self, e: u64, f: &Self) -> Self {
         let base = self % f;
@@ -132,6 +194,13 @@ impl<F: Field> Uni<F> {
     }
 
     /// `self(g)`.
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// assert_eq!(u(&[0, 0, 1]).compose(&u(&[1, 1])), u(&[1, 2, 1]));
+    /// ```
     #[must_use]
     pub fn compose(&self, g: &Self) -> Self {
         self.0.iter().rev().fold(Self::zero(), |acc, c| {
@@ -139,6 +208,7 @@ impl<F: Field> Uni<F> {
         })
     }
 
+    /// The value at `x`, by Horner's rule.
     pub fn eval(&self, x: &F) -> F {
         self.0
             .iter()
@@ -146,6 +216,16 @@ impl<F: Field> Uni<F> {
             .fold(F::zero(), |acc, c| acc * x.clone() + c.clone())
     }
 
+    /// The formal derivative.
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// let f = u(&[1, 3, 0, 4]);
+    /// assert_eq!(f.derivative(), u(&[3, 0, 12]));
+    /// assert_eq!(f.derivative().integral(), &f - &u(&[1]));
+    /// ```
     #[must_use]
     pub fn derivative(&self) -> Self {
         let mut k = F::zero();
@@ -167,7 +247,17 @@ impl<F: Field> Uni<F> {
         Self::new(std::iter::once(F::zero()).chain(v).collect())
     }
 
-    /// The monic gcd.
+    /// The monic gcd, zero only when both are. Over a prime field [`Uni::gcd_fast`] is faster on
+    /// large inputs.
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// // gcd(2x^2 - 2, x^2 + 4x + 3) = x + 1
+    /// assert_eq!(u(&[-2, 0, 2]).gcd(&u(&[3, 4, 1])), u(&[1, 1]));
+    /// assert_eq!(u(&[1, 1]).gcd(&u(&[2, 1])), u(&[1]));
+    /// ```
     #[must_use]
     pub fn gcd(&self, o: &Self) -> Self {
         let (mut a, mut b) = (self.0.clone(), o.0.clone());
@@ -181,7 +271,18 @@ impl<F: Field> Uni<F> {
         Self(a).monic()
     }
 
-    /// `(s, t, g)` with `s * self + t * o = g`, the gcd `g` monic.
+    /// `(s, t, g)` with `s * self + t * o = g`, the gcd `g` monic. When `g = 1`, `s` is the
+    /// inverse of `self` modulo `o`.
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// let (a, b) = (u(&[-1, 0, 1]), u(&[3, 4, 1]));
+    /// let (s, t, g) = a.bezout(&b);
+    /// assert_eq!(g, u(&[1, 1]));
+    /// assert_eq!(&(&s * &a) + &(&t * &b), g);
+    /// ```
     pub fn bezout(&self, o: &Self) -> (Self, Self, Self) {
         let (mut r0, mut r1) = (self.clone(), o.clone());
         let (mut s0, mut s1) = (Self::constant(F::one()), Self::zero());
@@ -198,7 +299,16 @@ impl<F: Field> Uni<F> {
         (s0.scale(&l), t0.scale(&l), r0.scale(&l))
     }
 
-    /// The resultant by the Euclidean recurrence.
+    /// The resultant by the Euclidean recurrence: zero exactly when the two share a root, and
+    /// zero if either is zero.
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// assert_eq!(u(&[-1, 0, 1]).resultant(&u(&[-1, 1])), Q::from_integer(0.into()));
+    /// assert_eq!(u(&[1, 0, 1]).resultant(&u(&[-1, 1])), Q::from_integer(2.into()));
+    /// ```
     pub fn resultant(&self, o: &Self) -> F {
         if self.is_zero() || o.is_zero() {
             return F::zero();
@@ -216,7 +326,17 @@ impl<F: Field> Uni<F> {
     }
 
     /// Yun's squarefree decomposition, the parts monic. Characteristic zero only: over `GF(p)` a
-    /// `p`-th power is lost.
+    /// `p`-th power is lost. Pairs `(g_i, i)` by ascending multiplicity, skipping trivial ones,
+    /// with `self = lc * prod g_i^i`.
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// // (x - 1)^2 (x + 2) = x^3 - 3x + 2
+    /// let f = u(&[2, -3, 0, 1]);
+    /// assert_eq!(f.squarefree(), vec![(u(&[2, 1]), 1), (u(&[-1, 1]), 2)]);
+    /// ```
     pub fn squarefree(&self) -> Vec<(Self, u32)> {
         let mut out = Vec::new();
         let c = self.gcd(&self.derivative());
@@ -238,6 +358,15 @@ impl<F: Field> Uni<F> {
 
     /// The power sums `p_0, ..., p_{n-1}` of the roots of a monic `self` of degree `n`, with
     /// multiplicity, by Newton's identities.
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// // roots 1 and 2: p_0 = 2 roots, p_1 = 1 + 2
+    /// let q = |n: i64| Q::from_integer(n.into());
+    /// assert_eq!(u(&[2, -3, 1]).power_sums(), vec![q(2), q(3)]);
+    /// ```
     pub fn power_sums(&self) -> Vec<F> {
         let n = self.deg();
         let a = |j: usize| self.0[n - j].clone();
@@ -252,7 +381,18 @@ impl<F: Field> Uni<F> {
         p
     }
 
-    /// Newton interpolation through `(xs[i], ys[i])` at distinct abscissae.
+    /// Newton interpolation through `(xs[i], ys[i])` at distinct abscissae: the unique
+    /// polynomial of degree below `xs.len()` through them. For points arriving one at a time see
+    /// [`crate::interp::Newton`].
+    ///
+    /// ```
+    /// use num_rational::BigRational as Q;
+    /// use polycore::Uni;
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Q::from_integer(c.into())).collect());
+    /// let q = |n: i64| Q::from_integer(n.into());
+    /// let f = Uni::interpolate(&[q(0), q(1), q(2)], &[q(1), q(2), q(5)]);
+    /// assert_eq!(f, u(&[1, 0, 1]));
+    /// ```
     pub fn interpolate(xs: &[F], ys: &[F]) -> Self {
         let mut out = Self::zero();
         let mut basis = Self::constant(F::one());
@@ -264,11 +404,24 @@ impl<F: Field> Uni<F> {
         out
     }
 
+    /// Maps every coefficient, trimming any that become zero at the top.
     pub fn map<G: Field>(&self, f: impl Fn(&F) -> G) -> Uni<G> {
         Uni::new(self.0.iter().map(f).collect())
     }
 
-    /// `self` in variable `k` of an `n`-variate ring.
+    /// `self` in variable `k` of an `n`-variate ring; the way to print a `Uni` with a
+    /// [`crate::Ring`].
+    ///
+    /// ```
+    /// use polycore::{Order, Ring, Uni};
+    /// let ring = Ring::new(["x", "y"], Order::Lex);
+    /// let f = ring.parse("y^2 - 3")?;
+    /// let u = Uni::from_poly(&f, 1).unwrap();
+    /// assert_eq!(u.deg(), 2);
+    /// assert_eq!(ring.show(&u.to_poly(1, 2, Order::Lex)), "y^2 - 3");
+    /// assert_eq!(Uni::from_poly(&ring.parse("x*y")?, 1), None);
+    /// # Ok::<(), polycore::ParseError>(())
+    /// ```
     pub fn to_poly(&self, k: usize, n: usize, order: Order) -> Poly<F> {
         let term = |(i, c): (usize, &F)| {
             let mut e = vec![0; n];
@@ -294,7 +447,17 @@ impl<F: Field> Uni<F> {
 
 impl<F: Modular> Uni<F> {
     /// The distinct roots in `GF(p)`, ascending by residue: the part of `gcd(f, x^p - x)` that
-    /// splits into linear factors, then Cantor-Zassenhaus equal degree splitting.
+    /// splits into linear factors, then Cantor-Zassenhaus equal degree splitting. Panics if every
+    /// coefficient is an unbound constant and the degree is positive.
+    ///
+    /// ```
+    /// use polycore::{Gf, Uni};
+    /// let u = |c: &[i64]| Uni::new(c.iter().map(|&c| Gf::<7>::from_i64(c)).collect());
+    /// // x^3 - x = x (x - 1) (x + 1)
+    /// assert_eq!(u(&[0, -1, 0, 1]).roots(), vec![Gf::new(0), Gf::new(1), Gf::new(6)]);
+    /// // x^2 + 1 is irreducible since 7 = 3 mod 4
+    /// assert!(u(&[1, 0, 1]).roots().is_empty());
+    /// ```
     pub fn roots(&self) -> Vec<F> {
         let p = self.0.iter().map(Modular::modulus).max().unwrap_or(0);
         assert!(p != 0 || self.deg() == 0, "roots need a bound modulus");

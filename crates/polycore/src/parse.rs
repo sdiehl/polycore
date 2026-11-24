@@ -10,6 +10,18 @@ use crate::poly::Poly;
 type Q = BigRational;
 
 /// Variable names and an order: enough to read and write polynomials.
+///
+/// Names are attached to variable indices in order, so `x` is variable 0 below. The ring is
+/// only a reader and printer; the [`Poly`] it produces carries `nvars` and `order` itself.
+///
+/// ```
+/// use polycore::{Order, Ring};
+/// let ring = Ring::new(["x", "y", "z"], Order::GRevLex);
+/// let f = ring.parse("(x + y)^2 - z/2")?;
+/// assert_eq!(f.nvars, 3);
+/// assert_eq!(ring.show(&f), "x^2 + 2*x*y + y^2 - 1/2*z");
+/// # Ok::<(), polycore::ParseError>(())
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Ring {
     pub names: Vec<String>,
@@ -32,11 +44,24 @@ impl std::error::Error for ParseError {}
 
 impl Ring {
     /// Panics on names [`Ring::try_new`] rejects.
+    ///
+    /// ```
+    /// use polycore::{Order, Ring};
+    /// let ring = Ring::new(["x", "y"], Order::Lex);
+    /// assert_eq!(ring.nvars(), 2);
+    /// ```
     pub fn new<S: Into<String>>(names: impl IntoIterator<Item = S>, order: Order) -> Self {
         Self::try_new(names, order).unwrap_or_else(|e| panic!("{e}"))
     }
 
     /// Rejects empty, duplicate and non-identifier names.
+    ///
+    /// ```
+    /// use polycore::{Order, Ring};
+    /// assert!(Ring::try_new(["x", "y_1"], Order::Lex).is_ok());
+    /// assert!(Ring::try_new(["x", "x"], Order::Lex).is_err());
+    /// assert!(Ring::try_new(["2x"], Order::Lex).is_err());
+    /// ```
     pub fn try_new<S: Into<String>>(
         names: impl IntoIterator<Item = S>,
         order: Order,
@@ -67,12 +92,37 @@ impl Ring {
     }
 
     /// Parses `+ - * / ^`, parentheses, integers and variable names over Q. Map the result into
-    /// another field with [`Poly::map`].
+    /// another field with [`Poly::map`]. Division is by nonzero constants only, and an unknown
+    /// name is an error.
+    ///
+    /// ```
+    /// use polycore::{Fp, Order, Ring};
+    /// let ring = Ring::new(["x", "y"], Order::Lex);
+    /// let f = ring.parse("3*x^2*y - x/2 + 7")?;
+    /// assert_eq!(ring.show(&f), "3*x^2*y - 1/2*x + 7");
+    ///
+    /// let g = f.map(|c| Fp::from_rational(c, 5).unwrap());
+    /// assert_eq!(ring.show(&g), "3*x^2*y + 2*x + 2");
+    ///
+    /// assert!(ring.parse("x + w").is_err());
+    /// assert!(ring.parse("1/x").is_err());
+    /// # Ok::<(), polycore::ParseError>(())
+    /// ```
     pub fn parse(&self, src: &str) -> Result<Poly<Q>, ParseError> {
         self.parse_with(src, &Q::from_integer, &[])
     }
 
-    /// Several polynomials separated by `,` or `;`, blanks skipped.
+    /// Several polynomials separated by `,` or `;`, blanks skipped. Error positions are into
+    /// the whole of `src`.
+    ///
+    /// ```
+    /// use polycore::{Order, Ring};
+    /// let ring = Ring::new(["x", "y"], Order::Lex);
+    /// let gens = ring.parse_many("x*y - 1; y^2 - 1,")?;
+    /// assert_eq!(gens.len(), 2);
+    /// assert_eq!(ring.parse_many("x, y +").unwrap_err().pos, 6);
+    /// # Ok::<(), polycore::ParseError>(())
+    /// ```
     pub fn parse_many(&self, src: &str) -> Result<Vec<Poly<Q>>, ParseError> {
         let mut out = Vec::new();
         let mut start = 0;
@@ -92,6 +142,17 @@ impl Ring {
     /// Parses over any field, reading integers through `lift` and the names in `params` as the
     /// given constants, such as the generators of `Q(a)` as [`crate::RatFunc`]. Division is by
     /// nonzero constants only.
+    ///
+    /// ```
+    /// use num_bigint::BigInt;
+    /// use polycore::{Gf, Order, Ring};
+    /// type F = Gf<101>;
+    /// let ring = Ring::new(["x"], Order::Lex);
+    /// let lift = |n: BigInt| F::from_i64(i64::try_from(n % 101).unwrap());
+    /// let f = ring.parse_with("x^2 + a*x + 200", &lift, &[("a", F::new(5))])?;
+    /// assert_eq!(ring.show(&f), "x^2 + 5*x + 99");
+    /// # Ok::<(), polycore::ParseError>(())
+    /// ```
     pub fn parse_with<F: Field>(
         &self,
         src: &str,
@@ -112,6 +173,7 @@ impl Ring {
         }
     }
 
+    /// A monomial as [`Ring::parse`] reads it: `x^2*y`, or `1`.
     pub fn monomial(&self, m: &Monomial) -> String {
         let vars = m.exps().iter().zip(&self.names).filter(|t| *t.0 > 0);
         let parts: Vec<String> = vars
@@ -130,6 +192,18 @@ impl Ring {
         }
     }
 
+    /// `p` as [`Ring::parse`] reads it, terms in the order of `p`, `0` for zero. Coefficients
+    /// print by their `Display`, so over `GF(p)` a negative one prints as its residue.
+    ///
+    /// ```
+    /// use polycore::{Order, Ring};
+    /// let ring = Ring::new(["x", "y"], Order::GrLex);
+    /// let f = ring.parse("y^3 - x*y + x^2/3 - 1")?;
+    /// let s = ring.show(&f);
+    /// assert_eq!(s, "y^3 + 1/3*x^2 - x*y - 1");
+    /// assert_eq!(ring.parse(&s)?, f);
+    /// # Ok::<(), polycore::ParseError>(())
+    /// ```
     pub fn show<F: Field + Display>(&self, p: &Poly<F>) -> String {
         let mut out = String::new();
         for (i, (m, c)) in p.terms.iter().enumerate() {
@@ -167,6 +241,14 @@ impl Ring {
     }
 
     /// `p` in LaTeX, fractions as `\frac`.
+    ///
+    /// ```
+    /// use polycore::{Order, Ring};
+    /// let ring = Ring::new(["x1", "y"], Order::Lex);
+    /// let f = ring.parse("x1^2/2 - y")?;
+    /// assert_eq!(ring.latex(&f), r"\frac{1}{2} x_{1}^{2} - y");
+    /// # Ok::<(), polycore::ParseError>(())
+    /// ```
     pub fn latex<F: Field + Display>(&self, p: &Poly<F>) -> String {
         let mut out = String::new();
         for (i, (m, c)) in p.terms.iter().enumerate() {

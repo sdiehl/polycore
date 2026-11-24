@@ -89,7 +89,23 @@ fn squarefree(f: &Uni<Fp>, p: u64) -> Vec<(Uni<Fp>, u32)> {
 }
 
 /// The leading coefficient and the monic irreducible factors over `GF(p)` with multiplicities,
-/// the modulus read from the coefficients.
+/// the modulus read from the coefficients: at least one must be bound to a prime `p`. `f =
+/// lc * prod g^e`.
+///
+/// ```
+/// use polycore::{Fp, Uni};
+/// use polyfactor::factor_mod;
+/// let u = |c: &[i64], p| Uni::new(c.iter().map(|&c| Fp::from_i64(c, p)).collect());
+/// // 2x^4 + 2 over GF(17): x^4 = -1 has all four roots since 8 divides 16
+/// let (lc, parts) = factor_mod(&u(&[2, 0, 0, 0, 2], 17));
+/// assert_eq!(lc, Fp::new(2, 17));
+/// let roots: Vec<u64> = parts.iter().map(|(g, _)| (-g.0[0]).value()).collect();
+/// assert_eq!(roots, [15, 9, 8, 2]);
+///
+/// // x^2 + 1 is irreducible over GF(7)
+/// let (_, parts) = factor_mod(&u(&[1, 0, 1], 7));
+/// assert_eq!(parts, vec![(u(&[1, 0, 1], 7), 1)]);
+/// ```
 pub fn factor_mod(f: &Uni<Fp>) -> (Fp, Vec<(Uni<Fp>, u32)>) {
     if f.is_zero() {
         return (Fp::zero(), Vec::new());

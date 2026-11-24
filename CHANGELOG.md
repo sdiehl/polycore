@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add crate-level quickstarts, type selection tables and conventions to `polycore` and `polyfactor`.
+- Add doc examples for `Ring`, `Poly`, `Uni` and `Fp`.
+- Add doc examples for `factor`, `factor_mod`, `factor_over`, `is_irreducible`, `NumberField` and `Alg`.
+
 ## 0.1.6 (2026-10-05)
 
 - Replace residue scans with random fixed-space factor splitting.
